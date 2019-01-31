@@ -11,7 +11,10 @@ interface AppSettings {
   lockOnClose: number;
   lockInactivityMinutes: number;
   powSource: PoWSource;
-  useStateBlocks: boolean;
+  serverName: string;
+  serverAPI: string | null;
+  serverNode: string | null;
+  serverWS: string | null;
 }
 
 @Injectable()
@@ -25,7 +28,10 @@ export class AppSettingsService {
     lockOnClose: 0,
     lockInactivityMinutes: 120,
     powSource: 'best',
-    useStateBlocks: true,
+    serverName: 'Bananovault',
+    serverAPI: null,
+    serverNode: null,
+    serverWS: null,
   };
 
   constructor() { }
@@ -72,7 +78,10 @@ export class AppSettingsService {
       lockOnClose: 0,
       lockInactivityMinutes: 120,
       powSource: 'best',
-      useStateBlocks: true,
+      serverName: 'bananovault',
+      serverNode: null,
+      serverAPI: null,
+      serverWS: null,
     };
   }
 

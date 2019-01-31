@@ -10,7 +10,7 @@ import {BananoBlockService} from "./nano-block.service";
 import {NotificationService} from "./notification.service";
 import {AppSettingsService} from "./app-settings.service";
 import {PriceService} from "./price.service";
-import {LedgerService} from "../ledger.service";
+import {LedgerService} from "./ledger.service";
 
 export type WalletType = "seed" | "ledger" | "privateKey";
 
@@ -27,7 +27,6 @@ export interface WalletAccount {
   balanceFiat: number;
   pendingFiat: number;
   addressBookName: string|null;
-  useStateBlocks: boolean;
 }
 export interface FullWallet {
   type: WalletType;
@@ -118,15 +117,12 @@ export class WalletService {
       const walletAccount = this.wallet.accounts.find(a => a.id === transaction.block.link_as_account);
       if (!walletAccount) return; // Not for our wallet?
 
-      walletAccount.useStateBlocks = true;
       this.addPendingBlock(walletAccount.id, transaction.hash, new BigNumber(0));
       await this.processPendingBlocks();
     } else {
       // Not a send to us, which means it was a block posted by us.  We shouldnt need to do anything...
       const walletAccount = this.wallet.accounts.find(a => a.id === transaction.block.link_as_account);
       if (!walletAccount) return; // Not for our wallet?
-
-      walletAccount.useStateBlocks = true; // Should already be set?
     }
   }
 
@@ -367,6 +363,7 @@ export class WalletService {
 
   createLedgerWallet() {
     this.resetWallet();
+    console.log(`Creating ledger wallet.... ?`);
 
     this.wallet.type = 'ledger';
     const newAccount = this.addWalletAccount(0);
@@ -375,8 +372,10 @@ export class WalletService {
   }
 
   async createLedgerAccount(index) {
-    const account = await this.ledgerService.getLedgerAccount(index);
+    console.log(`Creating ledger account at index... `, index);
+    const account: any = await this.ledgerService.getLedgerAccount(index);
 
+    console.log(`Got account!`, account);
     const accountID = account.address;
     const addressBookName = this.addressBook.getAccountName(accountID);
 
@@ -393,7 +392,6 @@ export class WalletService {
       pendingFiat: 0,
       index: index,
       addressBookName,
-      useStateBlocks: true,
     };
 
     return newAccount;
@@ -418,7 +416,6 @@ export class WalletService {
       pendingFiat: 0,
       index: index,
       addressBookName,
-      useStateBlocks: false,
     };
 
     return newAccount;
@@ -487,11 +484,11 @@ export class WalletService {
     const accountIDs = this.wallet.accounts.map(a => a.id);
     const accounts = await this.api.accountsBalances(accountIDs);
     const frontiers = await this.api.accountsFrontiers(accountIDs);
-    const allFrontiers = [];
-    for (const account in frontiers.frontiers) {
-      allFrontiers.push({ account, frontier: frontiers.frontiers[account] });
-    }
-    const frontierBlocks = await this.api.blocksInfo(allFrontiers.map(f => f.frontier));
+    // const allFrontiers = [];
+    // for (const account in frontiers.frontiers) {
+    //   allFrontiers.push({ account, frontier: frontiers.frontiers[account] });
+    // }
+    // const frontierBlocks = await this.api.blocksInfo(allFrontiers.map(f => f.frontier));
 
     let walletBalance = new BigNumber(0);
     let walletPending = new BigNumber(0);
@@ -513,13 +510,13 @@ export class WalletService {
       walletAccount.frontier = frontiers.frontiers[accountID] || null;
 
       // Look at the accounts latest block to determine if they are using state blocks
-      if (walletAccount.frontier && frontierBlocks.blocks[walletAccount.frontier]) {
-        const frontierBlock = frontierBlocks.blocks[walletAccount.frontier];
-        const frontierBlockData = JSON.parse(frontierBlock.contents);
-        if (frontierBlockData.type === 'state') {
-          walletAccount.useStateBlocks = true;
-        }
-      }
+      // if (walletAccount.frontier && frontierBlocks.blocks[walletAccount.frontier]) {
+      //   const frontierBlock = frontierBlocks.blocks[walletAccount.frontier];
+      //   const frontierBlockData = JSON.parse(frontierBlock.contents);
+      //   if (frontierBlockData.type === 'state') {
+      //     walletAccount.useStateBlocks = true;
+      //   }
+      // }
 
       walletBalance = walletBalance.plus(walletAccount.balance);
       walletPending = walletPending.plus(walletAccount.pending);
@@ -564,7 +561,6 @@ export class WalletService {
       pendingFiat: 0,
       index: index,
       addressBookName,
-      useStateBlocks: true,
     };
 
     this.wallet.accounts.push(newAccount);
@@ -576,17 +572,11 @@ export class WalletService {
   async addWalletAccount(accountIndex: number|null = null, reloadBalances: boolean = true) {
     // if (!this.wallet.seedBytes) return;
     let index = accountIndex;
-    let nextIndex = index + 1;
     if (index === null) {
-      index = this.wallet.accountsIndex; // Use the existing number, then increment it
+      index = 0; // Use the existing number, then increment it
 
       // Make sure the index is not being used (ie. if you delete acct 3/5, then press add twice, it goes 3, 6, 7)
       while (this.wallet.accounts.find(a => a.index === index)) index++;
-
-      // Find the next available index
-      nextIndex = index + 1;
-      while (this.wallet.accounts.find(a => a.index === nextIndex)) nextIndex++;
-      this.wallet.accountsIndex = nextIndex;
     }
 
     let newAccount: WalletAccount|null;
@@ -597,15 +587,21 @@ export class WalletService {
       newAccount = await this.createSeedAccount(index);
     } else if (this.wallet.type === 'ledger') {
       try {
+        console.log(`Creating ledger account at index: `, index);
         newAccount = await this.createLedgerAccount(index);
       } catch (err) {
-        this.notifications.sendWarning(`Unable to load account from ledger.  Make sure it is connected`);
+        // this.notifications.sendWarning(`Unable to load account from ledger.  Make sure it is connected`);
         throw err;
       }
 
     }
 
     this.wallet.accounts.push(newAccount);
+
+    // Set new accountsIndex - used when importing wallets.  Only count from 0, won't include custom added ones
+    let nextIndex = 0;
+    while (this.wallet.accounts.find(a => a.index === nextIndex)) nextIndex++;
+    this.wallet.accountsIndex = nextIndex;
 
     if (reloadBalances) await this.reloadBalances();
 
@@ -731,9 +727,14 @@ export class WalletService {
     }
 
     if (this.wallet.type === 'seed') {
-      data.seed = this.wallet.seed;
+      // Forcefully encrypt the seed so an unlocked wallet is never saved
+      if (!this.wallet.locked) {
+        const encryptedSeed = CryptoJS.AES.encrypt(this.wallet.seed, this.wallet.password || '');
+        data.seed = encryptedSeed.toString();
+      } else {
+        data.seed = this.wallet.seed;
+      }
       data.locked = this.wallet.locked;
-      data.password = this.wallet.locked ? '' : this.wallet.password;
     }
 
     return data;

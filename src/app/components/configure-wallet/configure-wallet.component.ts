@@ -3,7 +3,7 @@ import {WalletService} from "../../services/wallet.service";
 import {NotificationService} from "../../services/notification.service";
 import {ActivatedRoute, Router} from "@angular/router";
 import * as bip from 'bip39';
-import {LedgerService, LedgerStatus} from "../../ledger.service";
+import {LedgerService, LedgerStatus} from "../../services/ledger.service";
 
 @Component({
   selector: 'app-configure-wallet',
@@ -78,10 +78,13 @@ export class ConfigureWalletComponent implements OnInit {
     this.notifications.sendSuccess(`Successfully imported wallet!`);
   }
 
-  async importLedgerWallet() {
+  async importLedgerWallet(refreshOnly = false) {
     // what is our ledger status? show a warning?
+    this.notifications.sendInfo(`Checking for Ledger device...`, { identifier: 'ledger-status', length: 0 });
     await this.ledgerService.loadLedger(true);
+    this.notifications.removeNotification('ledger-status');
 
+    console.log(`Importing ledger device.....`);
     if (this.ledger.status === LedgerStatus.NOT_CONNECTED) {
       return this.notifications.sendWarning(`No ledger device detected, make sure it is connected and you are using Chrome/Opera`);
     }
@@ -90,6 +93,11 @@ export class ConfigureWalletComponent implements OnInit {
       return this.notifications.sendWarning(`Unlock your ledger device and open the Banano app to continue`);
     }
 
+    if (refreshOnly) {
+      return;
+    }
+
+    console.log(`Import: creating ledger wallet`);
     const newWallet = await this.walletService.createLedgerWallet();
 
     // We skip the password panel
